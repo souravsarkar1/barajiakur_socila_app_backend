@@ -1,0 +1,28 @@
+version: 0.2
+
+phases:
+  pre_build:
+    commands:
+      - echo Logging in to Amazon ECR...
+      - aws --version
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
+      - COMMIT_ID=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)  # Get the first 7 characters of the commit ID   
+      - echo Commit ID $COMMIT_ID
+      - REPOSITORY_URI=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME
+      - echo Repository URI $REPOSITORY_URI
+
+  build:
+    commands:
+      - echo Building Docker image...
+      - echo Build started on `date`
+      - docker build -t $REPOSITORY_URI:$COMMIT_ID --build-arg GIT_SSH_KEY=$GIT_SSH_KEY .
+      - echo Build completed on `date`
+
+  post_build:
+    commands:
+      - echo Pushing Docker image to Amazon ECR...
+      - docker push $REPOSITORY_URI:$COMMIT_ID
+      - echo Writing image definitions file...
+      - printf '[{"name":"%s","imageUri":"%s"}]' $SERVICE_NAME $REPOSITORY_URI:$COMMIT_ID > imagedefinitions.json
+artifacts:
+    files: imagedefinitions.json
